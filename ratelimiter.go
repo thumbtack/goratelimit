@@ -59,7 +59,7 @@ func (rl *limiter) TryAcquire(requested int64, t int64) bool {
 
 	for {
 		rl.lock.RLock()
-		throttle := (rl.current + requested) >= rl.qps
+		throttle := (rl.current + requested) > rl.qps
 		rl.lock.RUnlock()
 
 		if !throttle {
@@ -80,7 +80,7 @@ func (rl *limiter) TryAcquire(requested int64, t int64) bool {
 				return false
 			}
 			rl.lock.RLock()
-			rl.log("Using (%d+%d) > %d -> blocking for %.2f ms", rl.current, requested, rl.qps, wait)
+			rl.log("(%d+%d) > %d -> blocking for %.2f ms", rl.current, requested, rl.qps, wait)
 			rl.lock.RUnlock()
 			time.Sleep(time.Duration(wait) * time.Millisecond)
 		}
