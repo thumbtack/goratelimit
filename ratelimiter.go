@@ -43,14 +43,15 @@ func New(qps int64) *limiter {
 	return rl
 }
 
-// reset the counter of consumed QPS every second
+// reset the counter of consumed QPS -- 100ms resolution
 func (rl *limiter) reset() {
-	ticker := time.NewTicker(time.Second * 1)
+	ticker := time.NewTicker(time.Millisecond * 100)
 
 	for range ticker.C {
 		rl.lock.RLock()
 		for client := range rl.current {
-			refresh := rl.current[client] - rl.qps
+			// we're refreshing every 100ms; 1/10th of the time, grant 1/10th of the qps
+			refresh := rl.current[client] - rl.qps/10
 			// negative qps makes no sense
 			if refresh < 0 {
 				refresh = 0

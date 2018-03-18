@@ -60,7 +60,6 @@ func TestLimiter_UpdateRate(t *testing.T) {
 
 func TestLimiter_TryAcquire(t *testing.T) {
 	rl := New(1)
-	rl.Debug(true)
 
 	// fail with a low timeout
 	success := rl.TryAcquire("", 10, 5)
@@ -89,7 +88,7 @@ func TestLimiter_Acquire(t *testing.T) {
 	rl.Acquire("", 5)
 }
 
-func concurrentClient(rl *limiter, qps int64, client string, wg *sync.WaitGroup, t *testing.T) {
+func concurrentClientSubSecondResolution(rl *limiter, qps int64, client string, wg *sync.WaitGroup, t *testing.T) {
 	defer wg.Done()
 
 	// fail with a low timeout
@@ -109,6 +108,23 @@ func concurrentClient(rl *limiter, qps int64, client string, wg *sync.WaitGroup,
 	if !success {
 		t.Fatal("Expected to succeed")
 	}
+
+	// make sure the counter has been reset
+	time.Sleep(time.Second)
+
+	// spend a couple of seconds at max qps
+	success = rl.TryAcquire(client, qps, 1)
+	if !success {
+		t.Fatal("Expected to succeed")
+	}
+	for i := 0; i < 50; i++ {
+		// as we're here, test sub-second resolution -- 100ms, granting 1/10th of qps
+		time.Sleep(time.Millisecond * 100)
+		success = rl.TryAcquire(client, qps/10, 1)
+		if !success {
+			t.Fatal("Expected to succeed")
+		}
+	}
 }
 
 func TestLimiter_TryAcquireConcurrent(t *testing.T) {
@@ -116,9 +132,10 @@ func TestLimiter_TryAcquireConcurrent(t *testing.T) {
 	qps := int64(1000)
 	rl := New(qps)
 
+	// 1000 concurrent clients
 	for i := 0; i < 1000; i++ {
 		wg.Add(1)
-		go concurrentClient(rl, qps, strconv.Itoa(i), &wg, t)
+		go concurrentClientSubSecondResolution(rl, qps, strconv.Itoa(i), &wg, t)
 		time.Sleep(time.Millisecond)
 	}
 
