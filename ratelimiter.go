@@ -4,8 +4,8 @@
 // at a configurable rate.
 //
 // A rate limiter instance is defined by the (fixed) rate at which permits are issued (often referred to as queries
-// per second). Permits are distributed smoothly, with a delay between individual requests being imposed in order
-// to ensure that the configured rate is maintained.
+// per second) to a given client. Permits are distributed smoothly, with a delay between individual requests being
+// imposed in order to ensure that the configured rate is maintained.
 
 package ratelimiter
 
@@ -19,7 +19,7 @@ import (
 
 type limiter struct {
 	qps     int64
-	current int64
+	current map[string]int64
 	lock    sync.RWMutex
 	debug   bool
 }
@@ -35,6 +35,7 @@ func New(qps int64) *limiter {
 	rl := &limiter{
 		qps: qps,
 	}
+	rl.current = make(map[string]int64, 0)
 
 	// launch a goroutine to reset the counter every second
 	go rl.reset()
@@ -48,45 +49,46 @@ func (rl *limiter) reset() {
 
 	for range ticker.C {
 		rl.lock.RLock()
-		current := rl.current
-		rl.lock.RUnlock()
-
-		refresh := current - rl.qps
-		// negative qps makes no sense
-		if refresh < 0 {
-			refresh = 0
+		for client := range rl.current {
+			refresh := rl.current[client] - rl.qps
+			// negative qps makes no sense
+			if refresh < 0 {
+				refresh = 0
+			}
+			rl.current[client] = refresh
+			rl.debugLog("'%s': resetting rate limiter: %d-%d = %d\n", client, rl.current[client], rl.qps, refresh)
 		}
-
-		rl.debugLog("Resetting rate limiter: %d-%d = %d\n", current, rl.qps, refresh)
-
-		rl.lock.Lock()
-		rl.current = refresh
-		rl.lock.Unlock()
+		rl.lock.RUnlock()
 	}
 }
 
 // Acquires requested QPS from the rate limiter, blocking until the request can be granted.
-func (rl *limiter) Acquire(requested int64) {
-	rl.TryAcquire(requested, -1)
+func (rl *limiter) Acquire(client string, requested int64) {
+	rl.TryAcquire(client, requested, -1)
 }
 
 // Acquires requested QPS from the rate limiter blocking at most t milliseconds. -1 will block forever.
 //
 // Returns true iff the request can be fulfilled without throttling
-func (rl *limiter) TryAcquire(requested int64, t int64) bool {
+func (rl *limiter) TryAcquire(client string, requested int64, t int64) bool {
 	i := 0
 	totalWait := float64(0)
 
 	for {
-		rl.lock.RLock()
-		current := rl.current
-		rl.lock.RUnlock()
+		var current int64
+		rl.lock.Lock()
+		if _, ok := rl.current[client]; !ok {
+			// first time this client is being used, initialize
+			rl.current[client] = 0
+		}
+		current = rl.current[client]
+		rl.lock.Unlock()
 
 		throttle := (current + requested) > rl.qps
 
 		if !throttle {
 			rl.lock.Lock()
-			rl.current += requested
+			rl.current[client] += requested
 			rl.lock.Unlock()
 			return true
 		} else {
@@ -98,11 +100,11 @@ func (rl *limiter) TryAcquire(requested int64, t int64) bool {
 			}
 			// -1 == wait forever
 			if t != -1 && (totalWait+wait) >= float64(t) {
-				rl.debugLog("Timeout exceeded")
+				rl.debugLog("'%s': timeout exceeded", client)
 				return false
 			}
 			totalWait += wait
-			rl.debugLog("(%d+%d) > %d -> blocking for %.2f ms", current, requested, rl.qps, wait)
+			rl.debugLog("'%s': (%d+%d) > %d -> blocking for %.2f ms", client, current, requested, rl.qps, wait)
 			time.Sleep(time.Duration(wait) * time.Millisecond)
 		}
 

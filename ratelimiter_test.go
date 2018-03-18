@@ -1,7 +1,10 @@
 package ratelimiter
 
 import (
+	"strconv"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestNew(t *testing.T) {
@@ -60,19 +63,19 @@ func TestLimiter_TryAcquire(t *testing.T) {
 	rl.Debug(true)
 
 	// fail with a low timeout
-	success := rl.TryAcquire(10, 5)
+	success := rl.TryAcquire("", 10, 5)
 	if success {
 		t.Fatal("Expected to fail")
 	}
 
 	// fail with a high timeout to make sure the counter is reset
-	success = rl.TryAcquire(10, 3000)
+	success = rl.TryAcquire("", 10, 3000)
 	if success {
 		t.Fatal("Expected to fail")
 	}
 
 	// succeed
-	success = rl.TryAcquire(1, 1)
+	success = rl.TryAcquire("", 1, 1)
 	if !success {
 		t.Fatal("Expected to succeed")
 	}
@@ -83,5 +86,41 @@ func TestLimiter_Acquire(t *testing.T) {
 
 	// we can't really test for failure here as it would just block forever
 	// it's covered above though and we can touch the edge case of requesting the maximum qps
-	rl.Acquire(5)
+	rl.Acquire("", 5)
+}
+
+func concurrentClient(rl *limiter, qps int64, client string, wg *sync.WaitGroup, t *testing.T) {
+	defer wg.Done()
+
+	// fail with a low timeout
+	success := rl.TryAcquire(client, qps+1, 5)
+	if success {
+		t.Fatal("Expected to fail")
+	}
+
+	// fail with a high timeout to make sure the counter is reset
+	success = rl.TryAcquire(client, qps+1, 1500)
+	if success {
+		t.Fatal("Expected to fail")
+	}
+
+	// succeed
+	success = rl.TryAcquire(client, qps, 1)
+	if !success {
+		t.Fatal("Expected to succeed")
+	}
+}
+
+func TestLimiter_TryAcquireConcurrent(t *testing.T) {
+	var wg sync.WaitGroup
+	qps := int64(1000)
+	rl := New(qps)
+
+	for i := 0; i < 1000; i++ {
+		wg.Add(1)
+		go concurrentClient(rl, qps, strconv.Itoa(i), &wg, t)
+		time.Sleep(time.Millisecond)
+	}
+
+	wg.Wait()
 }
