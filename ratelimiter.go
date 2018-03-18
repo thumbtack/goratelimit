@@ -1,4 +1,4 @@
-// Package ratelimiter implements a simple rate limiter (loosely inspired in Guava's rate limiter class).
+// Package ratelimiter implements a simple rate limiter (loosely based on Guava's rate limiter class).
 //
 // Rate limiting algorithms are typically used to distribute permits that grant access to a given resource
 // at a configurable rate.
