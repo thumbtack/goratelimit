@@ -7,7 +7,7 @@
 // per second) to a given client. Permits are distributed smoothly, with a delay between individual requests being
 // imposed in order to ensure that the configured rate is maintained.
 
-package ratelimiter
+package goratelimit
 
 import (
 	"errors"
