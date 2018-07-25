@@ -88,7 +88,7 @@ func TestLimiter_Acquire(t *testing.T) {
 	rl.Acquire("", 5)
 }
 
-func concurrentClientSubSecondResolution(rl *limiter, qps int64, client string, wg *sync.WaitGroup, t *testing.T) {
+func concurrentClientSubSecondResolution(rl *Limiter, qps int64, client string, wg *sync.WaitGroup, t *testing.T) {
 	defer wg.Done()
 
 	// fail with a low timeout

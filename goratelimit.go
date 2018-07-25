@@ -3,7 +3,7 @@
 // Rate limiting algorithms are typically used to distribute permits that grant access to a given resource
 // at a configurable rate.
 //
-// A rate limiter instance is defined by the (fixed) rate at which permits are issued (often referred to as queries
+// A rate Limiter instance is defined by the (fixed) rate at which permits are issued (often referred to as queries
 // per second) to a given client. Permits are distributed smoothly, with a delay between individual requests being
 // imposed in order to ensure that the configured rate is maintained.
 
@@ -17,22 +17,22 @@ import (
 	"time"
 )
 
-type limiter struct {
+type Limiter struct {
 	qps     int64
 	current map[string]int64
 	lock    sync.RWMutex
 	debug   bool
 }
 
-// New creates a new rate limiter instance with the specified QPS
+// New creates a new rate Limiter instance with the specified QPS
 //
 // Returns nil if qps is negative or zero
-func New(qps int64) *limiter {
+func New(qps int64) *Limiter {
 	if qps <= 0 {
 		return nil
 	}
 
-	rl := &limiter{
+	rl := &Limiter{
 		qps: qps,
 	}
 	rl.current = make(map[string]int64, 0)
@@ -44,7 +44,7 @@ func New(qps int64) *limiter {
 }
 
 // reset the counter of consumed QPS -- 100ms resolution
-func (rl *limiter) reset() {
+func (rl *Limiter) reset() {
 	ticker := time.NewTicker(time.Millisecond * 100)
 
 	for range ticker.C {
@@ -57,21 +57,21 @@ func (rl *limiter) reset() {
 				refresh = 0
 			}
 			rl.current[client] = refresh
-			rl.debugLog("'%s': resetting rate limiter: %d-%d = %d\n", client, rl.current[client], rl.qps, refresh)
+			rl.debugLog("'%s': resetting rate Limiter: %d-%d = %d\n", client, rl.current[client], rl.qps, refresh)
 		}
 		rl.lock.RUnlock()
 	}
 }
 
-// Acquires requested QPS from the rate limiter, blocking until the request can be granted.
-func (rl *limiter) Acquire(client string, requested int64) {
+// Acquires requested QPS from the rate Limiter, blocking until the request can be granted.
+func (rl *Limiter) Acquire(client string, requested int64) {
 	rl.TryAcquire(client, requested, -1)
 }
 
-// Acquires requested QPS from the rate limiter blocking at most t milliseconds. -1 will block forever.
+// Acquires requested QPS from the rate Limiter blocking at most t milliseconds. -1 will block forever.
 //
 // Returns true iff the request can be fulfilled without throttling
-func (rl *limiter) TryAcquire(client string, requested int64, t int64) bool {
+func (rl *Limiter) TryAcquire(client string, requested int64, t int64) bool {
 	i := 0
 	totalWait := float64(0)
 
@@ -113,10 +113,10 @@ func (rl *limiter) TryAcquire(client string, requested int64, t int64) bool {
 	}
 }
 
-// SetRate updates the rate (QPS) of the rate limiter
+// SetRate updates the rate (QPS) of the rate Limiter
 //
 // Returns an error if qps is negative or zero
-func (rl *limiter) SetRate(qps int64) error {
+func (rl *Limiter) SetRate(qps int64) error {
 	if qps <= 0 {
 		return errors.New("qps must be greater than zero")
 	}
@@ -128,8 +128,8 @@ func (rl *limiter) SetRate(qps int64) error {
 	return nil
 }
 
-// Returns the rate (QPS) with which the rate limiter is configured
-func (rl *limiter) GetRate() int64 {
+// Returns the rate (QPS) with which the rate Limiter is configured
+func (rl *Limiter) GetRate() int64 {
 	rl.lock.RLock()
 	qps := rl.qps
 	rl.lock.RUnlock()
@@ -138,11 +138,11 @@ func (rl *limiter) GetRate() int64 {
 }
 
 // Enable or disable debugLog logging
-func (rl *limiter) Debug(enable bool) {
+func (rl *Limiter) Debug(enable bool) {
 	rl.debug = enable
 }
 
-func (rl *limiter) debugLog(format string, a ...interface{}) {
+func (rl *Limiter) debugLog(format string, a ...interface{}) {
 	if rl.debug {
 		log.Printf(format, a...)
 	}
